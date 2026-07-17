@@ -5,6 +5,14 @@ import { Button } from '../ui/Button'
 import { REPORT_REWARD } from '../../types'
 import type { NewReportInput } from '../../store/reportsStore'
 import { reverseGeocode } from '../../lib/reverseGeocode'
+import {
+  ALLOWED_REPORT_IMAGE_TYPES,
+  MAX_REPORT_ADDRESS_LENGTH,
+  MAX_REPORT_CONTENT_LENGTH,
+  MAX_REPORT_TITLE_LENGTH,
+  buildCreateReportRequest,
+  validateReportImageFile,
+} from '../../lib/reportValidation'
 
 interface ReportFormProps {
   open: boolean
@@ -22,6 +30,8 @@ export function ReportForm({ open, coord, onClose, onSubmit, onRepick }: ReportF
   const [addressError, setAddressError] = useState<string | null>(null)
   const [description, setDescription] = useState('')
   const [photo, setPhoto] = useState('') // 업로드한 사진 data URL
+  const [photoError, setPhotoError] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open || !coord) return
@@ -56,6 +66,8 @@ export function ReportForm({ open, coord, onClose, onSubmit, onRepick }: ReportF
     setAddressError(null)
     setDescription('')
     setPhoto('')
+    setPhotoError(null)
+    setSubmitError(null)
   }
 
   const handleClose = () => {
@@ -63,21 +75,39 @@ export function ReportForm({ open, coord, onClose, onSubmit, onRepick }: ReportF
     onClose()
   }
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => setPhoto(String(reader.result))
-    reader.readAsDataURL(file)
     e.target.value = '' // 같은 파일 재선택 허용
+    if (!file) return
+
+    setPhotoError(null)
+    setSubmitError(null)
+    try {
+      await validateReportImageFile(file)
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result))
+        reader.onerror = () => reject(new Error('사진을 읽지 못했습니다.'))
+        reader.readAsDataURL(file)
+      })
+      setPhoto(dataUrl)
+    } catch (error) {
+      setPhoto('')
+      setPhotoError(error instanceof Error ? error.message : '사진 첨부에 실패했습니다.')
+    }
   }
 
   const canSubmit =
-    title.trim().length > 0 && address.trim().length > 0 && coord !== null && photo !== ''
+    title.trim().length > 0 &&
+    address.trim().length > 0 &&
+    description.trim().length > 0 &&
+    coord !== null &&
+    photo !== ''
 
   const handleSubmit = () => {
     if (!canSubmit || !coord) return
-    onSubmit({
+
+    const input: NewReportInput = {
       title: title.trim(),
       address: address.trim(),
       description: description.trim(),
@@ -85,8 +115,15 @@ export function ReportForm({ open, coord, onClose, onSubmit, onRepick }: ReportF
       lat: coord.lat,
       lng: coord.lng,
       photoUrl: photo,
-    })
-    reset()
+    }
+
+    try {
+      buildCreateReportRequest(input)
+      onSubmit(input)
+      reset()
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : '입력값을 확인해주세요.')
+    }
   }
 
   return (
@@ -136,7 +173,9 @@ export function ReportForm({ open, coord, onClose, onSubmit, onRepick }: ReportF
             onChange={(e) => {
               setAddress(e.target.value)
               setAddressError(null)
+              setSubmitError(null)
             }}
+            maxLength={MAX_REPORT_ADDRESS_LENGTH}
             placeholder={
               addressLoading ? '선택한 위치의 주소를 찾는 중…' : '예: 충북 청주시 상당구 성안로 1'
             }
@@ -152,7 +191,11 @@ export function ReportForm({ open, coord, onClose, onSubmit, onRepick }: ReportF
           <span className="text-sm font-medium text-neutral-700">제목</span>
           <input
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => {
+              setTitle(e.target.value)
+              setSubmitError(null)
+            }}
+            maxLength={MAX_REPORT_TITLE_LENGTH}
             placeholder="예: 성안길 입구 쓰레기 더미"
             className="border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-esg-600"
           />
@@ -160,10 +203,14 @@ export function ReportForm({ open, coord, onClose, onSubmit, onRepick }: ReportF
 
         {/* 설명 */}
         <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium text-neutral-700">설명</span>
+          <span className="text-sm font-medium text-neutral-700">설명 (필수)</span>
           <textarea
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(e) => {
+              setDescription(e.target.value)
+              setSubmitError(null)
+            }}
+            maxLength={MAX_REPORT_CONTENT_LENGTH}
             rows={3}
             placeholder="상황을 설명해주세요."
             className="resize-none border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-esg-600"
@@ -182,7 +229,11 @@ export function ReportForm({ open, coord, onClose, onSubmit, onRepick }: ReportF
               />
               <button
                 type="button"
-                onClick={() => setPhoto('')}
+                onClick={() => {
+                  setPhoto('')
+                  setPhotoError(null)
+                  setSubmitError(null)
+                }}
                 className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center border border-neutral-800 bg-white text-neutral-700 hover:text-red-600"
                 aria-label="사진 삭제"
               >
@@ -195,13 +246,16 @@ export function ReportForm({ open, coord, onClose, onSubmit, onRepick }: ReportF
               사진 첨부
               <input
                 type="file"
-                accept="image/*"
+                accept={ALLOWED_REPORT_IMAGE_TYPES.join(',')}
                 onChange={handleFile}
                 className="hidden"
               />
             </label>
           )}
+          {photoError && <span className="text-xs text-red-600">{photoError}</span>}
         </div>
+
+        {submitError && <p className="text-sm text-red-600">{submitError}</p>}
       </div>
     </Modal>
   )

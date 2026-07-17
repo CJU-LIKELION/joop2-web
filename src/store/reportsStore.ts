@@ -3,6 +3,7 @@ import type { Report, ReportCategory, ReportStatus } from '../types'
 import { SEED_REPORTS } from '../mocks/reports'
 import { api } from '../lib/api'
 import { parseReportListResponse } from '../lib/reportApi'
+import { buildCreateReportRequest } from '../lib/reportValidation'
 
 /*
  * [백엔드 연동 지점 — 신고(Report)]
@@ -19,28 +20,6 @@ export interface NewReportInput {
   lat: number
   lng: number
   photoUrl: string
-}
-
-interface CreateReportRequest {
-  title: string
-  category: ReportCategory
-  content: string
-  address: string
-  latitude: number
-  longitude: number
-  imageUrl: string
-}
-
-function toCreateReportRequest(input: NewReportInput): CreateReportRequest {
-  return {
-    title: input.title,
-    category: input.category,
-    content: input.description,
-    address: input.address,
-    latitude: input.lat,
-    longitude: input.lng,
-    imageUrl: input.photoUrl,
-  }
 }
 
 interface ReportsState {
@@ -90,14 +69,21 @@ export const useReportsStore = create<ReportsState>((set) => ({
 
   // 신고 등록: POST /reports — 화면은 낙관적으로 먼저 반영하고, 서버 응답이 오면 덮어씀
   addReport: (input) => {
+    // UI 검증을 우회해도 API 호출 직전에 동일한 스키마로 다시 검증합니다.
+    const payload = buildCreateReportRequest(input)
     const report: Report = {
       id: `r-${Date.now()}`,
+      title: payload.title,
+      description: payload.content,
+      address: payload.address,
+      category: payload.category,
+      lat: payload.latitude,
+      lng: payload.longitude,
+      photoUrl: payload.imageUrl,
       status: 'received',
       createdAt: new Date().toISOString(),
-      ...input,
     }
     set((state) => ({ reports: [report, ...state.reports] }))
-    const payload = toCreateReportRequest(input)
     api
       .post<Partial<Report>>('/reports', payload)
       .then((saved) => {

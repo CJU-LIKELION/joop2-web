@@ -2,9 +2,6 @@
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
-> **MIRRORING RULE (required)**: `AGENTS.md` and `AGENT.md` must always have **identical content**.
-> Whenever you edit one, **immediately reflect the same change in the other**. (Only the title line `# AGENTS.md` / `# AGENT.md` may differ.)
-
 ---
 
 ## Working Principles (Karpathy) — top priority, mandatory
