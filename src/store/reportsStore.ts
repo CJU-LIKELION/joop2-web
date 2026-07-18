@@ -2,12 +2,13 @@ import { create } from 'zustand'
 import type { Report, ReportCategory, ReportStatus } from '../types'
 import { SEED_REPORTS } from '../mocks/reports'
 import { api } from '../lib/api'
-import { parseReportListResponse } from '../lib/reportApi'
+import { parseCreateReportResponse, parseLogic2Response } from '../lib/reportApi'
 import { buildCreateReportRequest } from '../lib/reportValidation'
 
 /*
  * [백엔드 연동 지점 — 신고(Report)]
- * 목록 조회와 신고 등록은 /reports API를 사용합니다.
+ * 전체 목록 API가 아직 없으므로 조회는 /logic2의 최신 신고 1건을 사용합니다.
+ * 신고 등록은 /reports API를 사용합니다.
  * 상태 변경과 치우기 완료는 계약 확정 전까지 메모리 상태로 동작합니다.
  */
 
@@ -50,14 +51,14 @@ export const useReportsStore = create<ReportsState>((set) => ({
 
     set({ isLoading: true, loadError: null })
     fetchReportsPromise = api
-      .get<unknown>('/reports')
+      .get<unknown>('/logic2')
       .then((response) => {
-        const reports = parseReportListResponse(response)
+        const reports = parseLogic2Response(response)
         set({ reports, isLoading: false, loadError: null })
       })
       .catch((error) => {
         const message = toErrorMessage(error)
-        console.error('신고 목록 API 실패 (/reports), 목 데이터를 사용합니다:', message)
+        console.error('최근 신고 API 실패 (/logic2), 목 데이터를 사용합니다:', message)
         set({ isLoading: false, loadError: message })
       })
       .finally(() => {
@@ -85,11 +86,15 @@ export const useReportsStore = create<ReportsState>((set) => ({
     }
     set((state) => ({ reports: [report, ...state.reports] }))
     api
-      .post<Partial<Report>>('/reports', payload)
-      .then((saved) => {
-        if (!saved?.id) return
+      .post<unknown>('/reports', payload)
+      .then((response) => {
+        const saved = parseCreateReportResponse(response)
         set((state) => ({
-          reports: state.reports.map((r) => (r.id === report.id ? { ...r, ...saved } : r)),
+          reports: state.reports.map((r) =>
+            r.id === report.id
+              ? { ...r, id: saved.id, photoUrl: saved.photoUrl ?? r.photoUrl }
+              : r,
+          ),
         }))
       })
       .catch((err) => {

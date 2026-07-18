@@ -3,7 +3,7 @@
 // - 구체 엔드포인트는 백엔드와 합의 후 각 store 의 TODO(API) 지점에서 호출
 
 const DEFAULT_API_BASE_URL = '/api'
-const DEFAULT_API_HEALTH_PATH = '/health'
+const DEFAULT_API_HEALTH_PATH = '/health_check'
 
 function normalizeBaseUrl(value?: string) {
   const trimmed = value?.trim()
@@ -19,8 +19,37 @@ function normalizePath(value?: string) {
 export const API_BASE_URL = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL)
 export const API_HEALTH_PATH = normalizePath(import.meta.env.VITE_API_HEALTH_PATH)
 
+function getBackendOrigin() {
+  try {
+    if (/^https?:\/\//i.test(API_BASE_URL)) return new URL(API_BASE_URL).origin
+  } catch {
+    // 잘못된 절대 URL은 아래의 현재 origin fallback으로 처리합니다.
+  }
+
+  return typeof window === 'undefined' ? '' : window.location.origin
+}
+
 export function buildApiUrl(path: string) {
   return `${API_BASE_URL}${normalizePath(path)}`
+}
+
+/** API 경로(`/api`) 바깥에 있는 헬스체크 같은 백엔드 URL을 만듭니다. */
+export function buildBackendUrl(path: string) {
+  const origin = getBackendOrigin()
+  return origin ? `${origin}${normalizePath(path)}` : normalizePath(path)
+}
+
+/** 백엔드가 반환한 `/uploads/...` 상대경로를 브라우저에서 표시 가능한 URL로 바꿉니다. */
+export function resolveBackendAssetUrl(value: string) {
+  if (!value || value.startsWith('data:') || value.startsWith('blob:')) return value
+
+  try {
+    if (/^https?:\/\//i.test(value)) return new URL(value).toString()
+    const origin = getBackendOrigin()
+    return origin ? new URL(value, `${origin}/`).toString() : value
+  } catch {
+    return value
+  }
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {

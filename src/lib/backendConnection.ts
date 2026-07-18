@@ -1,4 +1,4 @@
-import { API_HEALTH_PATH, buildApiUrl } from './api'
+import { API_HEALTH_PATH, buildBackendUrl } from './api'
 
 function toErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
@@ -16,7 +16,7 @@ async function readResponseBody(res: Response) {
 }
 
 export async function checkBackendConnection() {
-  const url = buildApiUrl(API_HEALTH_PATH)
+  const url = buildBackendUrl(API_HEALTH_PATH)
 
   try {
     const res = await fetch(url, {

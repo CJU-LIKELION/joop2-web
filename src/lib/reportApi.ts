@@ -1,7 +1,9 @@
 import type { Report, ReportCategory, ReportStatus } from '../types'
+import { resolveBackendAssetUrl } from './api'
 
 interface BackendReport {
   id?: string | number
+  reportId?: string | number
   title: string
   category: string
   content: string
@@ -62,7 +64,8 @@ function fallbackId(report: BackendReport, index: number) {
 }
 
 function toReport(report: BackendReport, index: number): Report {
-  const id = report.id === undefined ? fallbackId(report, index) : String(report.id)
+  const backendId = report.reportId ?? report.id
+  const id = backendId === undefined ? fallbackId(report, index) : String(backendId)
 
   return {
     id,
@@ -73,8 +76,43 @@ function toReport(report: BackendReport, index: number): Report {
     status: normalizeStatus(report.status),
     lat: report.latitude,
     lng: report.longitude,
-    photoUrl: report.imageUrl || undefined,
+    photoUrl: report.imageUrl ? resolveBackendAssetUrl(report.imageUrl) : undefined,
     createdAt: normalizeCreatedAt(report.createdAt),
+  }
+}
+
+export function parseLogic2Response(value: unknown): Report[] {
+  if (!isRecord(value) || value.success !== true) {
+    throw new Error('Logic2 조회 응답이 성공 형식이 아닙니다.')
+  }
+
+  if (!isBackendReport(value.data)) {
+    throw new Error('Logic2 조회 응답에 유효한 신고 데이터가 없습니다.')
+  }
+
+  return [toReport(value.data, 0)]
+}
+
+export interface CreateReportResult {
+  id: string
+  photoUrl?: string
+}
+
+export function parseCreateReportResponse(value: unknown): CreateReportResult {
+  if (!isRecord(value) || value.success !== true) {
+    throw new Error('신고 등록 응답이 성공 형식이 아닙니다.')
+  }
+
+  if (typeof value.reportId !== 'string' && typeof value.reportId !== 'number') {
+    throw new Error('신고 등록 응답에 신고 번호가 없습니다.')
+  }
+
+  return {
+    id: String(value.reportId),
+    photoUrl:
+      typeof value.imageUrl === 'string' && value.imageUrl
+        ? resolveBackendAssetUrl(value.imageUrl)
+        : undefined,
   }
 }
 
