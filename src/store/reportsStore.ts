@@ -9,7 +9,8 @@ import { buildCreateReportRequest } from '../lib/reportValidation'
  * [백엔드 연동 지점 — 신고(Report)]
  * 전체 목록 API가 아직 없으므로 조회는 /logic2의 최신 신고 1건을 사용합니다.
  * 신고 등록은 /reports API를 사용합니다.
- * 상태 변경과 치우기 완료는 계약 확정 전까지 메모리 상태로 동작합니다.
+ * 담당부서 상태 변경은 /reports/{reportId}/status API를 사용합니다.
+ * 치우기 완료는 계약 확정 전까지 메모리 상태로 동작합니다.
  */
 
 // 신고 생성 시 입력값 (id/status/createdAt은 스토어가 채움)
@@ -29,7 +30,7 @@ interface ReportsState {
   loadError: string | null
   fetchReports: () => Promise<void>
   addReport: (input: NewReportInput) => Report
-  updateStatus: (id: string, status: ReportStatus) => void
+  updateStatus: (id: string, status: ReportStatus) => Promise<void>
   // 시민이 치우고 처리 후 사진을 올려 완료 처리
   resolveReport: (id: string, resolvedPhotoUrl: string) => void
 }
@@ -103,11 +104,13 @@ export const useReportsStore = create<ReportsState>((set) => ({
     return report
   },
 
-  // TODO(API): 상태 변경 요청 후 반영 (담당부서)
-  updateStatus: (id, status) =>
+  // 담당부서 상태 변경: 서버 반영이 성공한 뒤 화면 상태를 갱신합니다.
+  updateStatus: async (id, status) => {
+    await api.patch<unknown>(`/reports/${encodeURIComponent(id)}/status`, { status })
     set((state) => ({
       reports: state.reports.map((r) => (r.id === id ? { ...r, status } : r)),
-    })),
+    }))
+  },
 
   // TODO(API): 치우기 완료(처리 후 사진 업로드) 요청 후 반영
   resolveReport: (id, resolvedPhotoUrl) =>
